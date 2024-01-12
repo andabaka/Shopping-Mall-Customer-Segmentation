@@ -1,0 +1,29 @@
+/* FONT */
+
+body{
+    font-family: Baskerville;
+    font-size: 16px;
+}
+
+.list-group-item.active, .list-group-item.active:focus, .list-group-item.active:hover {
+    background-color: #414A37;
+    border-color: #414A37;
+}
+
+.h1, .h2, .h3, .h4, .h5, .h6, h1, h2, h3, h4, h5, h6 {
+    color: #414A37;
+    
+}
+
+a {
+    color: #490910;
+}
+
+ a:focus,a:hover {
+                color: #414A37;
+}
+
+p{
+    
+    font-size: 17px;
+}

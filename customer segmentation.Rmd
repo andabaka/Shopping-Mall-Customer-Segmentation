@@ -1,0 +1,292 @@
+---
+title: "Shopping mall customer segmentation"
+author: "Marijana Andabaka"
+date: '2023-03-02'
+output:
+  html_document:
+    number_sections: true  
+    css: styles.css  
+    code_folding: hide
+    df_print: paged
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: no
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    message = FALSE,
+    warning = FALSE,
+    out.width = "100%",
+    fig.align = "center")
+```
+
+[![Picture by K.Grabowska from Pexels](img/img1.jpg "Picture by K.Grabowska from Pexels")](https://www.pexels.com/photo/shopping-cart-on-top-of-books-5632401/)
+
+
+# INTRODUCTION
+
+Customer segmentation is a crucial aspect of marketing enabling businesses to categorize their customers into distinct groups. The goal of segmentation is to better understand the diverse needs and preferences of different customer groups and tailor marketing efforts to meet those specific needs. In this project, we will apply the k-means clustering algorithm to segment customers of a shopping mall based on their characteristics and spending behavior.^[https://www.researchgate.net/publication/356756320_Customer_Segmentation_Using_Machine_Learning].
+
+Applying customer segmentation in business offers benefits such as more effective marketing strategies, predicting customer behavior, improving loyalty and customer retention, successful product development, and price optimization.
+
+K-means is a popular unsupervised machine learning algorithm used for clustering data points into groups based on similarity. The algorithm aims to partition data into k clusters, where each observation belongs to the cluster with the nearest mean.^[https://www.youtube.com/watch?v=4b5d3muPQmA]
+
+For cluster visualisation, we will use the UMAP algorithm. UMAP, which stands for Uniform Manifold Approximation and Projection, is a dimensionality reduction technique used for visualizing high-dimensional data in lower-dimensional spaces. It is particularly popular for preserving both global and local structures within the data, making it effective for tasks such as clustering and visualization^[https://www.youtube.com/watch?v=eN0wFzBA4Sc]. 
+
+
+# ANALYSIS
+
+In this project, we aim to segment customers who have made purchases at the shopping center into clusters based on various data points, including gender, age, annual income, and spending score. Each cluster will ultimately represent customers with similar characteristics, enabling the implementation of more targeted and personalized approaches
+
+## Reading libraries
+```{r libraries}
+library(tidyverse)
+library(tidyquant)
+library(broom)
+library(umap)
+library(ggrepel)
+library(plotly)
+library(DT)
+```
+
+## Importing data
+
+The mall customers database contains basic information about customers, such as Customer ID, Gender, Age, Annual Income ($1000), and Spending Score (1-100). Spending Score is assigned to each customer based on certain parameters, such as consumption data. The database consists of 200 individual entries (rows)^[https://www.kaggle.com/datasets/vjchoudhary7/customer-segmentation-tutorial-in-python].
+
+```{r data}
+mall_customers_tbl<-readr::read_csv("Data/Mall_Customers.csv")
+
+# Glimpse database
+mall_customers_tbl %>% glimpse()
+
+# Formmtting gender into factor
+mall_customers_tbl <- mall_customers_tbl %>% 
+    mutate(Gender = Gender %>% as.factor())
+
+# Interactive table
+datatable(mall_customers_tbl, caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: center;',
+    'Table 1: ', htmltools::em('Mall Customers Database '))
+    )
+
+```
+
+## CRISP-DM Metodology
+
+The Cross-Industry Standard Process for Data Mining (CRISP-DM) methodology provides a structured approach for data mining projects. It consists of six phases: business understanding, data understanding, data preparation, modeling, evaluation and deployment.
+
+### Business Understanding
+
+The manager of a shopping mall wants to identify customer groups and target them by adjusting marketing strategies accordingly.
+
+### Data Understanding
+
+First, we will check if there are any missing values.
+
+```{r missing}
+mall_customers_tbl %>% 
+    summarise_all(~sum(is.na(.)))
+```
+
+Data has no missing values and now let's look into some descriptives.
+
+```{r histogram, out.width="60%"}
+# Distributions
+mall_customers_tbl %>% 
+    ggplot(aes(Age))+
+    geom_histogram(fill = "#5b0b15")+
+    theme_tq()+
+    labs(title = "Age Distribution")
+
+mall_customers_tbl %>% 
+    ggplot(aes(`Annual Income (k$)`))+
+    geom_histogram(fill = "#5b0b15")+
+    scale_x_continuous(breaks=seq(15, 140, 25))+
+    theme_tq()+
+    labs(title = "Annual Income Distribution")
+
+mall_customers_tbl %>% 
+    ggplot(aes(`Spending Score (1-100)`))+
+    geom_histogram(fill = "#5b0b15")+
+    theme_tq()+
+    labs(title = "Spending Score Distribution")
+```
+
+According to the histograms, we conclude that the data does not follow a normal distribution, and the majority of customers are in their thirties with an annual income of $60,000 and a spending score of 40.
+
+```{r box-plot, out.width="60%"}
+# Box-plot
+mall_customers_tbl %>% 
+    ggplot(aes(Age, Gender, fill= Gender))+
+    geom_boxplot(color = c("#414a37", "#5b0b15"),alpha= 0.3) +
+    coord_flip() +
+    theme_tq()+
+    scale_fill_manual(values = c("#414a37", "#5b0b15"))+
+    theme(legend.position = "none")+
+    labs(title = "")
+
+mall_customers_tbl %>% 
+    ggplot(aes(`Annual Income (k$)`, Gender, fill = Gender))+
+    geom_boxplot(color = c("#414a37", "#5b0b15"),alpha= 0.3) +
+    coord_flip() +
+    scale_x_continuous(breaks=seq(15, 140, 25))+
+    theme_tq()+
+    scale_fill_manual(values = c("#414a37", "#5b0b15"))+
+    theme(legend.position = "none")+
+    labs(title = "")
+
+mall_customers_tbl %>% 
+    ggplot(aes(`Spending Score (1-100)`, Gender, fill = Gender))+
+    geom_boxplot(color = c("#414a37", "#5b0b15"),alpha= 0.3) +
+    coord_flip() +
+    theme_tq()+
+    scale_fill_manual(values = c("#414a37", "#5b0b15"))+
+    theme(legend.position = "none")+
+    labs(title = "")
+```
+
+Male customers are mostly 37 years old with annual income of $64,000, and a spending score of 50. Female customers are generally 35 years old with annual income of $60,000, and a spending score of 50.
+Most male customers are within the age range of 27 to 51, with annual income between $46,000 and $78,000 and spending score ranging from 25 to 73. Female customers are predominantly aged between 29 and 48, with annual incomes ranging from $40,000 to $76,000, and spending scores from 40 to 74.
+
+
+## Data preparation
+
+Before applying the k-means algorithm we will normalize data using `scale()` function. Data normalization is a preprocessing technique used in statistics and machine learning to scale the values of different features or variables to a common range. The goal of normalization is to bring the data into a standard format, making it more suitable for analysis or training machine learning models. This process ensures that no variable dominates or biases the learning algorithm due to differences in scale.
+
+```{r normalization}
+mall_customers_tbl_scl<-mall_customers_tbl %>% 
+    select(3:5) %>% 
+    scale()
+```
+
+## Modeling
+
+### K-Means Algorithm
+
+The optimal number of clusters will be determined with Scree Plot graph. First, we will apply k-means clustering using different numbers of clusters (k). Then, according to Scree Plot graph, which displays the sum of squares within clusters (WCSS) for different numbers of clusters, a decision about the number of clusters will be made. WCSS is the sum of squared distances between each data point and the center of its assigned cluster. The criterion for deciding on the appropriate number of clusters is considered the position of the elbow on the Scree Plot graph (the bending point).
+
+After standardizing the data, we will apply the k-means algorithm and calculate WCSS for different values of k clusters (1 to 15) using a custom built function. Then, we will draw a Scree Plot graph and determine the optimal number of k clusters (the position of the elbow).
+ 
+
+```{r kmeans, out.width="60%"}
+# Custom function
+set.seed(123)
+centers <- 3
+kmeans_function <- function(centers = 3) {
+    mall_customers_tbl_scl %>% 
+    kmeans(centers = centers, nstart = 100)
+}
+
+# Iteration through all means
+kmeans_tbl <- tibble(centers = 1:15) %>% 
+    mutate(k_means = centers %>% map(kmeans_function)) %>% 
+    mutate(glance = k_means %>% map(glance))
+
+kmeans_tbl %>% unnest(glance) %>% 
+    select(centers, tot.withinss)
+
+# Scree plot
+kmeans_tbl %>% unnest(glance) %>% 
+    select(centers, tot.withinss) %>% 
+    ggplot(aes(centers, tot.withinss))+
+    geom_point(color = "#414a37", size = 0.8)+
+    geom_line(color = "#414a37", size = 0.8) +
+    ggrepel::geom_label_repel(aes(label = centers), color = "#414a37")+
+    geom_vline(xintercept = 6, color = "#5b0b15")+
+    theme_tq() +
+    labs(title = "Scree Plot")+
+    xlab("Number of k clusters")+
+    ylab("Total within-clusters sum of squares(WCSS)")
+```
+
+On the Scree Plot, we can observe that the variance within clusters decreases with an increase in the number of clusters. The bending or elbow is at k = 6. This bending indicates that additional clusters beyond the sixth have a small value, suggesting that the difference between clusters after this point will be less significant. Therefore, we choose 6 k clusters for segmenting the mall customer database.
+
+### UMAP visualisation
+
+We will visualize the optimal number of k clusters with the UMAP algorithm.
+
+
+```{r UMAP}
+# Set seed 
+custom.config <- umap.defaults
+custom.config$random_state <- 123
+
+# UMAP algorithm
+umap_obj <- mall_customers_tbl_scl %>% 
+    umap(config=custom.config)
+
+# Results extraction and data preparation for visualization
+umap_results_tbl <- umap_obj$layout %>% 
+    as_tibble() %>% 
+    set_names("x", "y") %>% 
+    bind_cols(
+        mall_customers_tbl %>% select(`CustomerID`))
+
+kmeans_6_obj <- kmeans_tbl %>% 
+    pull(k_means) %>% 
+    pluck(6)
+
+kmeans_6_clusters <- kmeans_6_obj %>% augment(mall_customers_tbl) %>% 
+    select(`CustomerID`, .cluster, Age, Gender, `Annual Income (k$)`, `Spending Score (1-100)`)
+
+umap_kmeans_6_results_tbl <- umap_results_tbl %>% 
+    left_join(kmeans_6_clusters)
+
+umap_tbl <-umap_kmeans_6_results_tbl %>% 
+    mutate(lable_text = str_glue("Customer ID: {`CustomerID`}
+                                Gender: {Gender}
+                                Age: {Age}
+                                Annual Income (k$): {`Annual Income (k$)`}
+                                Spending Score: {`Spending Score (1-100)`}
+                                Cluster: {.cluster}"))
+
+# UMAP visualisation
+gg1 <- umap_tbl %>% 
+     ggplot(aes(x, y, color = .cluster)) + 
+     geom_point(aes(text = lable_text)) + 
+     theme_tq() +
+     scale_color_tq() + 
+     labs(title = "Customer Segmentation: 2D Projection",
+          subtitle = "UMAP 2D projection with k-means clusters") +
+     theme(legend.position = "none")
+
+ggplotly(gg1, tooltip = "text")
+```
+
+
+### Cluster Interpretation
+
+After visualizing the obtained customer groups, we will interpret the clusters:
+
+- __Cluster 1__: Group of customers with low annual income, low spending scores, mostly middle-aged.
+- __Cluster 2__: Customers with high income, low spending score, mostly middle-aged.
+- __Cluster 3__: Customers with low annual income, high spending score, mostly young customers.
+- __Cluster 4__: Customers with high annual income, high spending score, mostly middle-aged.
+- __Cluster 5__: Customers with moderate annual income, moderate spending score, mostly older customers.
+- __Cluster 6__: Customers with moderate income, moderate spending score, mostly middle-aged.
+
+Interactive table of customers with their respective clusters.
+
+```{r table}
+datatable(kmeans_6_clusters, caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: center;',
+    'Table 2: ', htmltools::em('Customer Clusters'))
+    )
+```
+
+
+# EVALUATION
+
+Insights into customer clusters and a better understanding enables the organizations to make better and informed decisions. Analysis has revealed the existence of a group of customers with high annual incomes but low spending scores. A strategic and targeted marketing approach could increase their interest, potentially resulting in higher consumption. Additionally, maintaining the satisfaction of "loyal customers" is crucial as they are the primary revenue generators.
+
+
+# IMPLEMENTATION
+
+The customer segmentation project has been implemented within the Shiny web application, enabling interactive visualization and interpretation of results (Figure 1). The application can be accessed by clicking on this link^[https://mandabaka.shinyapps.io/customer_app/].
+
+
+
